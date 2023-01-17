@@ -1,0 +1,47 @@
+version: '3'
+
+services:
+  zoo12:
+    image: zookeeper:3.8
+    hostname: zoo12
+    environment:
+      ZOO_MY_ID: 1
+      ZOO_SERVERS: server.1=zoo1:2888:3888;2181
+    volumes:
+      - "../zk-kafka/zoo1/data:/data:rw"
+      - "../zk-kafka/zoo1/datalog:/datalog:rw"
+  kafka1:
+    image: confluentinc/cp-kafka:latest
+    hostname: kafka1
+    container_name: kafka1
+    ports: [ 9092:9092 ]
+    links:
+      - zoo12
+    environment:
+      HOSTNAME_COMMAND: "docker info | grep ^Name: | cut -d' ' -f 2"
+      KAFKA_BROKER_ID: 1
+      KAFKA_REPLICATION_FACTOR: 1
+      KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
+      KAFKA_ZOOKEEPER_CONNECT: "zoo12:2181"
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka1:9092,CONNECTIONS_FROM_HOST://localhost:19091
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONNECTIONS_FROM_HOST:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CREATE_TOPICS: "events_topic"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 1
+    volumes:
+      - "../zk-kafka/kafka1/data:/var/lib/kafka/data:rw"
+  tracker:
+    image: my-rust-app
+    volumes:
+      - "${PWD}/conf/tracker.yml:/usr/config.yml:ro"
+      - "${PWD}/conf/log4rs.yaml:/usr/log4rs.yaml:ro"
+    command: /usr/config.yml
+    depends_on:
+      - kafka1
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "10"
