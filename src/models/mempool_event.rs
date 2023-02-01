@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MempoolEvent {
-    TxAccepted(String),
-    TxWithdrawn(String),
+    TxAccepted { tx: String },
+    TxWithdrawn { tx: String },
 }
 
 impl MempoolEvent {
@@ -16,12 +16,12 @@ impl MempoolEvent {
             MempoolUpdate::TxAccepted(tx) => {
                 let tx_bytes: Vec<u8> = tx.sigma_serialize_bytes().unwrap();
                 let encoded: String = general_purpose::STANDARD_NO_PAD.encode(tx_bytes);
-                MempoolEvent::TxAccepted(encoded)
+                MempoolEvent::TxAccepted { tx: encoded }
             }
             MempoolUpdate::TxWithdrawn(tx) => {
                 let tx_bytes: Vec<u8> = tx.sigma_serialize_bytes().unwrap();
                 let encoded: String = general_purpose::STANDARD_NO_PAD.encode(tx_bytes);
-                MempoolEvent::TxWithdrawn(encoded)
+                MempoolEvent::TxWithdrawn { tx: encoded }
             }
         }
     }
