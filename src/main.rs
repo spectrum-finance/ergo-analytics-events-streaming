@@ -6,7 +6,7 @@ use std::sync::{Once};
 use futures::{Stream};
 use std::pin::Pin;
 use isahc::{prelude::*, HttpClient};
-use ergo_chain_sync::ChainSync;
+use ergo_chain_sync::{ChainSync, ChainSyncNonInit, InitChainSync};
 use ergo_chain_sync::client::node::ErgoNodeHttpClient;
 use ergo_chain_sync::cache::rocksdb::ChainCacheRocksDB;
 use serde::Deserialize;
@@ -14,6 +14,7 @@ use clap::{arg, Parser};
 use ergo_chain_sync::rocksdb::RocksConfig;
 use ergo_chain_sync::client::types::Url;
 use std::time::Duration;
+use ergo_mempool_sync::{MempoolSync, MempoolSyncConf};
 
 use kafka::producer::{Producer, RequiredAcks};
 use futures::StreamExt;
@@ -23,8 +24,11 @@ use spectrum_offchain::event_sink::types::{EventHandler, NoopDefaultHandler};
 
 use spectrum_offchain::event_sink::process_events;
 use futures::stream::select_all;
-use crate::event_source::{block_event_source, tx_event_source};
+use wasm_timer::Delay;
+use crate::event_source::{block_event_source, mempool_event_source, tx_event_source};
 use crate::models::tx_event::TxEvent;
+use ergo_mempool_sync::client::node;
+use ergo_mempool_sync::client::node::ErgoMempoolHttpClient;
 
 #[tokio::main]
 async fn main() {
@@ -39,21 +43,44 @@ async fn main() {
     }
     let client = HttpClient::builder()
         .timeout(std::time::Duration::from_secs(
-            config.http_client_timeout_duration_secs as u64,
+            config.http_client_timeout_duration_secs.clone() as u64,
         ))
         .build()
         .unwrap();
 
-    let node = ErgoNodeHttpClient::new(client, config.node_addr);
+    let node = ErgoNodeHttpClient::new(client, config.node_addr.clone());
     let cache = ChainCacheRocksDB::new(RocksConfig {
         db_path: config.chain_cache_db_path.into(),
     });
     static SIGNAL_TIP_REACHED: Once = Once::new();
     let chain_sync = ChainSync::init(
-        config.chain_sync_starting_height,
+        config.chain_sync_starting_height.clone(),
         &node,
         cache,
         Some(&SIGNAL_TIP_REACHED),
+    ).await;
+    let client_mempool = HttpClient::builder()
+        .timeout(std::time::Duration::from_secs(
+            config.http_client_timeout_duration_secs.clone() as u64,
+        ))
+        .build()
+        .unwrap();
+    let node_mempool = ErgoMempoolHttpClient::new(client_mempool, config.node_addr.clone());
+    let cache_mempool = ChainCacheRocksDB::new(RocksConfig {
+        db_path: config.mempool_cache_db_path.into(),
+    });
+    let mempool_chain_sync =
+        ChainSyncNonInit::new(
+            &node,
+            cache_mempool,
+        );
+
+    let mempool_sync = MempoolSync::init(
+        MempoolSyncConf {
+            sync_interval: Delay::new(Duration::from_secs(config.mempool_sync_interval))
+        },
+        &node_mempool,
+        mempool_chain_sync,
     ).await;
 
     let producer1 =
@@ -68,6 +95,15 @@ async fn main() {
             .with_required_acks(RequiredAcks::One)
             .create()
             .unwrap();
+    let producer3 =
+        Producer::from_hosts(vec!(config.kafka_address.to_owned()))
+            .with_ack_timeout(Duration::from_secs(1))
+            .with_required_acks(RequiredAcks::One)
+            .create()
+            .unwrap();
+    let mempool_source = mempool_event_source(
+        mempool_sync, producer3, config.mempool_topic.to_string()
+    );
     let event_source = tx_event_source(
         block_event_source(chain_sync, producer1, config.blocks_topic.to_string())
     );
@@ -83,7 +119,8 @@ async fn main() {
     );
 
     let mut app = select_all(vec![
-        process_events_stream
+        process_events_stream,
+        boxed(mempool_source)
     ]);
 
     loop {
@@ -98,9 +135,12 @@ struct AppConfig<'a> {
     chain_sync_starting_height: u32,
     log4rs_yaml_path: &'a str,
     chain_cache_db_path: &'a str,
+    mempool_cache_db_path: &'a str,
     kafka_address: &'a str,
     blocks_topic: &'a str,
     tx_topic: &'a str,
+    mempool_topic: &'a str,
+    mempool_sync_interval: u64,
 }
 
 #[derive(Parser)]

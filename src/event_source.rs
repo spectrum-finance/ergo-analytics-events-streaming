@@ -2,10 +2,12 @@ use futures::stream::StreamExt;
 use futures::{stream, Stream};
 
 use ergo_chain_sync::ChainUpgrade;
+use ergo_mempool_sync::MempoolUpdate;
 use futures::future::ready;
 
 use kafka::producer::{Producer, Record};
 use crate::models::kafka_event::BlockEvent;
+use crate::models::mempool_event::MempoolEvent;
 
 use crate::models::tx_event::TxEvent;
 
@@ -66,4 +68,32 @@ fn process_upgrade(upgr: ChainUpgrade) -> Vec<TxEvent> {
                 .collect()
         }
     }
+}
+
+pub fn mempool_event_source<S>(upstream: S, mut producer: Producer, topic: String)
+                               -> impl Stream<Item=()>
+    where S: Stream<Item=MempoolUpdate>
+{
+    upstream.then(move |ev| {
+        let kafka_event = MempoolEvent::from_mempool_event(ev.clone());
+        let kafka_string = serde_json::to_string(&kafka_event).unwrap();
+        let tx_id: String = match ev.clone() {
+            MempoolUpdate::TxAccepted(tx) => {
+                tx.id().clone().into()
+            }
+            MempoolUpdate::TxWithdrawn(tx) => {
+                tx.id().clone().into()
+            }
+        };
+        let rec: &Record<String, String> =
+            &Record::from_key_value(
+                topic.as_str(),
+                tx_id.clone(),
+                kafka_string,
+            );
+        println!("Got new mempool event. Key: ${:?}", tx_id.clone());
+        producer.send(rec).unwrap();
+        println!("New mempool event processed by kafka. Key: ${:?}", tx_id.clone());
+        ready(())
+    })
 }
