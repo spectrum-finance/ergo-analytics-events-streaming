@@ -15,12 +15,12 @@ appenders:
       # deserializer, and will vary based on the kind of policy.
       trigger:
         kind: size
-        limit: 5mb
+        limit: 50mb
       roller:
         kind: fixed_window
         base: 1
-        count: 5
-        pattern: "logs/streaming.{}.log"
+        count: 10
+        pattern: "log/streaming.{}.log"
 root:
   level: info
   appenders:
