@@ -11,17 +11,20 @@ pub enum MempoolEvent {
 }
 
 impl MempoolEvent {
-    pub fn from_mempool_event(ev: MempoolUpdate) -> Self {
+    pub fn from_mempool_event(ev: MempoolUpdate) -> Option<Self> {
         match ev {
             MempoolUpdate::TxAccepted(tx) => {
                 let tx_bytes: Vec<u8> = tx.sigma_serialize_bytes().unwrap();
                 let encoded: String = general_purpose::STANDARD_NO_PAD.encode(tx_bytes);
-                MempoolEvent::TxAccepted { tx: encoded }
+                Some(MempoolEvent::TxAccepted { tx: encoded })
             }
             MempoolUpdate::TxWithdrawn(tx) => {
                 let tx_bytes: Vec<u8> = tx.sigma_serialize_bytes().unwrap();
                 let encoded: String = general_purpose::STANDARD_NO_PAD.encode(tx_bytes);
-                MempoolEvent::TxWithdrawn { tx: encoded }
+                Some(MempoolEvent::TxWithdrawn { tx: encoded })
+            }
+            _ => {
+                None
             }
         }
     }
