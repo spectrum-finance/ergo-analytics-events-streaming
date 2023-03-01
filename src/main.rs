@@ -6,7 +6,7 @@ use std::sync::{Once};
 use futures::{Stream};
 use std::pin::Pin;
 use isahc::{prelude::*, HttpClient};
-use ergo_chain_sync::{ChainSync, ChainSyncNonInit, InitChainSync};
+use ergo_chain_sync::{chain_sync_stream, ChainSync, ChainSyncNonInit};
 use ergo_chain_sync::client::node::ErgoNodeHttpClient;
 use ergo_chain_sync::cache::rocksdb::ChainCacheRocksDB;
 use serde::Deserialize;
@@ -14,7 +14,7 @@ use clap::{arg, Parser};
 use ergo_chain_sync::rocksdb::RocksConfig;
 use ergo_chain_sync::client::types::Url;
 use std::time::Duration;
-use ergo_mempool_sync::{MempoolSync, MempoolSyncConf};
+use ergo_mempool_sync::{mempool_sync_stream_combined, MempoolSync, MempoolSyncConf};
 
 use kafka::producer::{Producer, RequiredAcks};
 use futures::StreamExt;
@@ -24,10 +24,8 @@ use spectrum_offchain::event_sink::types::{EventHandler, NoopDefaultHandler};
 
 use spectrum_offchain::event_sink::process_events;
 use futures::stream::select_all;
-use wasm_timer::Delay;
 use crate::event_source::{block_event_source, mempool_event_source, tx_event_source};
 use crate::models::tx_event::TxEvent;
-use ergo_mempool_sync::client::node;
 use ergo_mempool_sync::client::node::ErgoMempoolHttpClient;
 
 #[tokio::main]
@@ -69,19 +67,7 @@ async fn main() {
     let cache_mempool = ChainCacheRocksDB::new(RocksConfig {
         db_path: config.mempool_cache_db_path.into(),
     });
-    let mempool_chain_sync =
-        ChainSyncNonInit::new(
-            &node,
-            cache_mempool,
-        );
 
-    let mempool_sync = MempoolSync::init(
-        MempoolSyncConf {
-            sync_interval: Delay::new(Duration::from_secs(config.mempool_sync_interval))
-        },
-        &node_mempool,
-        mempool_chain_sync,
-    ).await;
 
     let producer1 =
         Producer::from_hosts(vec!(config.kafka_address.to_owned()))
@@ -101,11 +87,28 @@ async fn main() {
             .with_required_acks(RequiredAcks::One)
             .create()
             .unwrap();
+
+    let mempool_chain_sync =
+        ChainSyncNonInit::new(
+            &node,
+            cache_mempool,
+        );
+
+
+    let mempool_sync = MempoolSync::init(
+        MempoolSyncConf {
+            sync_interval: config.mempool_sync_interval
+        },
+        &node_mempool,
+        mempool_chain_sync,
+    ).await;
+
     let mempool_source = mempool_event_source(
-        mempool_sync, producer3, config.mempool_topic.to_string()
+        mempool_sync_stream_combined(mempool_sync),
+        producer3, config.mempool_topic.to_string(),
     );
     let event_source = tx_event_source(
-        block_event_source(chain_sync, producer1, config.blocks_topic.to_string())
+        block_event_source(chain_sync_stream(chain_sync), producer1, config.blocks_topic.to_string())
     );
     let handler = ProxyEvents::new(producer2, config.tx_topic.clone().to_string());
     let handlers: Vec<Box<dyn EventHandler<TxEvent>>> = vec![
@@ -120,7 +123,7 @@ async fn main() {
 
     let mut app = select_all(vec![
         process_events_stream,
-        boxed(mempool_source)
+        boxed(mempool_source),
     ]);
 
     loop {
