@@ -1,5 +1,5 @@
-use base64::Engine;
 use base64::engine::general_purpose;
+use base64::Engine;
 use ergo_lib::ergotree_ir::serialization::SigmaSerializable;
 use ergo_mempool_sync::MempoolUpdate;
 use serde::{Deserialize, Serialize};
@@ -23,9 +23,7 @@ impl MempoolEvent {
                 let encoded: String = general_purpose::STANDARD_NO_PAD.encode(tx_bytes);
                 Some(MempoolEvent::TxWithdrawn { tx: encoded })
             }
-            _ => {
-                None
-            }
+            _ => None,
         }
     }
 }
