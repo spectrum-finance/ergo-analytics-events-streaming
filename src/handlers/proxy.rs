@@ -28,14 +28,14 @@ impl EventHandler<TxEvent> for ProxyEvents {
                 timestamp: _timestamp,
                 tx,
                 block_height: _,
-            } => tx.id().clone().into(),
-            TxEvent::UnappliedTx(tx) => tx.id().clone().into(),
+            } => tx.id().into(),
+            TxEvent::UnappliedTx(tx) => tx.id().into(),
         };
         let rec: &Record<String, String> =
             &Record::from_key_value(self.topic.as_str(), tx_id.clone(), kafka_string);
-        println!("Got new event. Key: ${:?}", tx_id.clone());
+        println!("Got new event. Key: ${:?}", tx_id);
         self.producer.send(rec).unwrap();
-        println!("New event processed by kafka. Key: ${:?}", tx_id.clone());
-        Some(ev.clone())
+        println!("New event processed by kafka. Key: ${:?}", tx_id);
+        Some(ev)
     }
 }

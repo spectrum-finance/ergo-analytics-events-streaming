@@ -22,25 +22,16 @@ where
     upstream.then(move |ev| {
         let block_event = BlockEvent::from_chain_upgrade(ev.clone());
         let block_id: String = match block_event.clone() {
-            BlockEvent::BlockApply {
-                timestamp: _,
-                height: _,
-                id,
-            } => id.clone(),
-            BlockEvent::BlockUnapply {
-                timestamp: _,
-                height: _,
-                id,
-            } => id.clone(),
+            BlockEvent::BlockApply { id, .. } | BlockEvent::BlockUnapply { id, .. } => id,
         };
         let value = serde_json::to_string(&block_event).unwrap();
-        println!("Block value is: ${:?}", value.clone());
+        println!("Block value is: ${:?}", value);
         let rec: &Record<String, String> =
             &Record::from_key_value(topic.as_str(), block_id.clone(), value);
-        println!("Got new block. Key: ${:?}", block_id.clone());
+        println!("Got new block. Key: ${:?}", block_id);
         producer.send(rec).unwrap();
-        println!("New block processed by kafka. Key: ${:?}", block_id.clone());
-        ready(ev.clone())
+        println!("New block processed by kafka. Key: ${:?}", block_id);
+        ready(ev)
     })
 }
 
@@ -86,27 +77,21 @@ where
             _ => None,
         })
         .then(move |event| {
-            match event {
-                Some(ev) => {
-                    let kafka_event = MempoolEvent::from_mempool_event(ev.clone());
-                    if kafka_event.is_some() {
-                        let kafka_string = serde_json::to_string(&kafka_event.unwrap()).unwrap();
-                        let tx_id: String = match ev.clone() {
-                            MempoolUpdate::TxAccepted(tx) => tx.id().clone().into(),
-                            MempoolUpdate::TxWithdrawn(tx) => tx.id().clone().into(),
-                            _ => "".to_string(),
-                        };
-                        let rec: &Record<String, String> =
-                            &Record::from_key_value(topic.as_str(), tx_id.clone(), kafka_string);
-                        println!("Got new mempool event. Key: ${:?}", tx_id.clone());
-                        producer.send(rec).unwrap();
-                        println!(
-                            "New mempool event processed by kafka. Key: ${:?}",
-                            tx_id.clone()
-                        );
-                    }
+            if let Some(ev) = event {
+                let kafka_event = MempoolEvent::from_mempool_event(ev.clone());
+                if let Some(kafka_event) = kafka_event {
+                    let kafka_string = serde_json::to_string(&kafka_event).unwrap();
+                    let tx_id: String = match ev {
+                        MempoolUpdate::TxAccepted(tx) => tx.id().into(),
+                        MempoolUpdate::TxWithdrawn(tx) => tx.id().into(),
+                        _ => "".to_string(),
+                    };
+                    let rec: &Record<String, String> =
+                        &Record::from_key_value(topic.as_str(), tx_id.clone(), kafka_string);
+                    println!("Got new mempool event. Key: ${:?}", tx_id);
+                    producer.send(rec).unwrap();
+                    println!("New mempool event processed by kafka. Key: ${:?}", tx_id);
                 }
-                _ => {}
             }
             ready(())
         })

@@ -42,7 +42,7 @@ async fn main() {
     }
     let client = HttpClient::builder()
         .timeout(std::time::Duration::from_secs(
-            config.http_client_timeout_duration_secs.clone() as u64,
+            config.http_client_timeout_duration_secs as u64,
         ))
         .build()
         .unwrap();
@@ -53,7 +53,7 @@ async fn main() {
     });
     static SIGNAL_TIP_REACHED: Once = Once::new();
     let chain_sync = ChainSync::init(
-        config.chain_sync_starting_height.clone(),
+        config.chain_sync_starting_height,
         &node,
         cache,
         Some(&SIGNAL_TIP_REACHED),
@@ -61,7 +61,7 @@ async fn main() {
     .await;
     let client_mempool = HttpClient::builder()
         .timeout(std::time::Duration::from_secs(
-            config.http_client_timeout_duration_secs.clone() as u64,
+            config.http_client_timeout_duration_secs as u64,
         ))
         .build()
         .unwrap();
@@ -107,7 +107,7 @@ async fn main() {
         producer1,
         config.blocks_topic.to_string(),
     ));
-    let handler = ProxyEvents::new(producer2, config.tx_topic.clone().to_string());
+    let handler = ProxyEvents::new(producer2, config.tx_topic.to_string());
     let handlers: Vec<Box<dyn EventHandler<TxEvent>>> = vec![Box::new(handler)];
 
     let default_handler = NoopDefaultHandler;
