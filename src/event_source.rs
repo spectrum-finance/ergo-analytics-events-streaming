@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ergo_chain_sync::ChainUpgrade;
 use ergo_mempool_sync::{Combined, MempoolUpdate};
-use futures::future::ready;
+
 use log::info;
 
 use crate::models::kafka_event::BlockEvent;
@@ -18,9 +18,9 @@ pub fn block_event_source<S>(
     upstream: S,
     producer: Producer,
     topic: String,
-) -> impl Stream<Item = ChainUpgrade>
-where
-    S: Stream<Item = ChainUpgrade>,
+) -> impl Stream<Item=ChainUpgrade>
+    where
+        S: Stream<Item=ChainUpgrade>,
 {
     let topic = Arc::new(tokio::sync::Mutex::new(topic));
     let producer = Arc::new(std::sync::Mutex::new(producer));
@@ -43,15 +43,15 @@ where
                 producer.lock().unwrap().send(rec).unwrap();
                 info!("New block processed by kafka. Key: ${:?}", block_id);
             })
-            .await
-        };
-        ready(ev.clone())
+                .await;
+            ev
+        }
     })
 }
 
-pub fn tx_event_source<S>(upstream: S) -> impl Stream<Item = TxEvent>
-where
-    S: Stream<Item = ChainUpgrade>,
+pub fn tx_event_source<S>(upstream: S) -> impl Stream<Item=TxEvent>
+    where
+        S: Stream<Item=ChainUpgrade>,
 {
     upstream.flat_map(|u| stream::iter(process_upgrade(u)))
 }
@@ -81,9 +81,9 @@ pub fn mempool_event_source<S>(
     upstream: S,
     producer: Producer,
     topic: String,
-) -> impl Stream<Item = ()>
-where
-    S: Stream<Item = Combined>,
+) -> impl Stream<Item=()>
+    where
+        S: Stream<Item=Combined>,
 {
     let topic = Arc::new(tokio::sync::Mutex::new(topic));
     let producer = Arc::new(std::sync::Mutex::new(producer));
@@ -117,7 +117,7 @@ where
                             producer.lock().unwrap().send(rec).unwrap();
                             info!("New mempool event processed by kafka. Key: ${:?}", tx_id);
                         })
-                        .await;
+                            .await;
                     }
                 }
             }
