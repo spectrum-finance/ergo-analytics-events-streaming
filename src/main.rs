@@ -13,7 +13,7 @@ use futures::Stream;
 use isahc::{prelude::*, HttpClient};
 use serde::Deserialize;
 use std::pin::Pin;
-use std::sync::Once;
+use std::sync::{Arc, Once};
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -107,7 +107,10 @@ async fn main() {
         producer1,
         config.blocks_topic.to_string(),
     ));
-    let handler = ProxyEvents::new(producer2, config.tx_topic.to_string());
+    let handler = ProxyEvents::new(
+        Arc::new(std::sync::Mutex::new(producer2)),
+        config.tx_topic.to_string(),
+    );
     let handlers: Vec<Box<dyn EventHandler<TxEvent>>> = vec![Box::new(handler)];
 
     let default_handler = NoopDefaultHandler;

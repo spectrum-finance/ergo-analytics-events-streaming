@@ -10,20 +10,22 @@ pub enum MempoolEvent {
     TxWithdrawn { tx: String },
 }
 
-impl MempoolEvent {
-    pub fn from_mempool_event(ev: MempoolUpdate) -> Option<Self> {
-        match ev {
+impl TryFrom<MempoolUpdate> for MempoolEvent {
+    type Error = ();
+
+    fn try_from(value: MempoolUpdate) -> Result<Self, Self::Error> {
+        match value {
             MempoolUpdate::TxAccepted(tx) => {
                 let tx_bytes: Vec<u8> = tx.sigma_serialize_bytes().unwrap();
                 let encoded: String = general_purpose::STANDARD_NO_PAD.encode(tx_bytes);
-                Some(MempoolEvent::TxAccepted { tx: encoded })
+                Ok(MempoolEvent::TxAccepted { tx: encoded })
             }
             MempoolUpdate::TxWithdrawn(tx) => {
                 let tx_bytes: Vec<u8> = tx.sigma_serialize_bytes().unwrap();
                 let encoded: String = general_purpose::STANDARD_NO_PAD.encode(tx_bytes);
-                Some(MempoolEvent::TxWithdrawn { tx: encoded })
+                Ok(MempoolEvent::TxWithdrawn { tx: encoded })
             }
-            _ => None,
+            _ => Err(()),
         }
     }
 }

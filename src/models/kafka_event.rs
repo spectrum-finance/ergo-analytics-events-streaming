@@ -17,9 +17,9 @@ pub enum KafkaEvent {
     UnappliedEvent(String),
 }
 
-impl KafkaEvent {
-    pub fn from_tx_ledger_event(ev: TxEvent) -> Self {
-        match ev {
+impl From<TxEvent> for KafkaEvent {
+    fn from(value: TxEvent) -> Self {
+        match value {
             TxEvent::AppliedTx {
                 timestamp,
                 tx,
@@ -56,9 +56,9 @@ pub enum BlockEvent {
     },
 }
 
-impl BlockEvent {
-    pub fn from_chain_upgrade(ev: ChainUpgrade) -> Self {
-        match ev {
+impl From<ChainUpgrade> for BlockEvent {
+    fn from(value: ChainUpgrade) -> Self {
+        match value {
             ChainUpgrade::RollForward(Block {
                 id,
                 parent_id: _,
