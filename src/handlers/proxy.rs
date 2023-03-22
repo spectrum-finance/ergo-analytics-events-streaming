@@ -1,12 +1,12 @@
+use async_std::task::spawn_blocking;
 use spectrum_offchain::event_sink::types::EventHandler;
 use std::sync::Arc;
-use async_std::task::spawn_blocking;
 
 use kafka::producer::{Producer, Record};
 
+use crate::models::kafka_event::KafkaEvent;
 use async_trait::async_trait;
 use log::info;
-use crate::models::kafka_event::KafkaEvent;
 
 use crate::models::tx_event::TxEvent;
 
@@ -42,8 +42,9 @@ impl EventHandler<TxEvent> for ProxyEvents {
                 producer.lock().unwrap().send(rec).unwrap();
                 info!("New event processed by kafka. Key: ${:?}", tx_id);
             })
-                .await;
+            .await;
             Some(ev)
-        }.await
+        }
+        .await
     }
 }

@@ -3,7 +3,7 @@ use futures::{stream, Stream};
 use std::sync::Arc;
 
 use ergo_chain_sync::ChainUpgrade;
-use ergo_mempool_sync::{Combined, MempoolUpdate};
+use ergo_mempool_sync::MempoolUpdate;
 
 use log::info;
 
@@ -18,9 +18,9 @@ pub fn block_event_source<S>(
     upstream: S,
     producer: Producer,
     topic: String,
-) -> impl Stream<Item=ChainUpgrade>
-    where
-        S: Stream<Item=ChainUpgrade>,
+) -> impl Stream<Item = ChainUpgrade>
+where
+    S: Stream<Item = ChainUpgrade>,
 {
     let topic = Arc::new(tokio::sync::Mutex::new(topic));
     let producer = Arc::new(std::sync::Mutex::new(producer));
@@ -43,15 +43,15 @@ pub fn block_event_source<S>(
                 producer.lock().unwrap().send(rec).unwrap();
                 info!("New block processed by kafka. Key: ${:?}", block_id);
             })
-                .await;
+            .await;
             ev
         }
     })
 }
 
-pub fn tx_event_source<S>(upstream: S) -> impl Stream<Item=TxEvent>
-    where
-        S: Stream<Item=ChainUpgrade>,
+pub fn tx_event_source<S>(upstream: S) -> impl Stream<Item = TxEvent>
+where
+    S: Stream<Item = ChainUpgrade>,
 {
     upstream.flat_map(|u| stream::iter(process_upgrade(u)))
 }
@@ -81,45 +81,35 @@ pub fn mempool_event_source<S>(
     upstream: S,
     producer: Producer,
     topic: String,
-) -> impl Stream<Item=()>
-    where
-        S: Stream<Item=Combined>,
+) -> impl Stream<Item = ()>
+where
+    S: Stream<Item = MempoolUpdate>,
 {
     let topic = Arc::new(tokio::sync::Mutex::new(topic));
     let producer = Arc::new(std::sync::Mutex::new(producer));
-    upstream
-        .map(|ev| match ev {
-            Combined::Mempool(mempool) => Some(mempool),
-            _ => None,
-        })
-        .then(move |event| {
-            let topic = topic.clone();
-            let producer = producer.clone();
-            async move {
-                if let Some(ev) = event {
-                    let mempool_event = MempoolEvent::try_from(ev.clone());
-                    if let Ok(kafka_event) = mempool_event {
-                        let kafka_string = serde_json::to_string(&kafka_event).unwrap();
-                        let tx_id: String = match ev {
-                            MempoolUpdate::TxAccepted(tx) => tx.id().into(),
-                            MempoolUpdate::TxWithdrawn(tx) => tx.id().into(),
-                            _ => "".to_string(),
-                        };
+    upstream.then(move |event| {
+        let topic = topic.clone();
+        let producer = producer.clone();
+        async move {
+            let mempool_event = MempoolEvent::try_from(event.clone());
+            if let Ok(kafka_event) = mempool_event {
+                let kafka_string = serde_json::to_string(&kafka_event).unwrap();
+                let tx_id: String = match event {
+                    MempoolUpdate::TxAccepted(tx) => tx.id().into(),
+                    MempoolUpdate::TxWithdrawn(tx) => tx.id().into(),
+                    _ => "".to_string(),
+                };
 
-                        let topic = topic.clone().lock().await.clone();
-                        spawn_blocking(move || {
-                            let rec: &Record<String, String> = &Record::from_key_value(
-                                topic.as_str(),
-                                tx_id.clone(),
-                                kafka_string,
-                            );
-                            info!("Got new mempool event. Key: ${:?}", tx_id);
-                            producer.lock().unwrap().send(rec).unwrap();
-                            info!("New mempool event processed by kafka. Key: ${:?}", tx_id);
-                        })
-                            .await;
-                    }
-                }
+                let topic = topic.clone().lock().await.clone();
+                spawn_blocking(move || {
+                    let rec: &Record<String, String> =
+                        &Record::from_key_value(topic.as_str(), tx_id.clone(), kafka_string);
+                    info!("Got new mempool event. Key: ${:?}", tx_id);
+                    producer.lock().unwrap().send(rec).unwrap();
+                    info!("New mempool event processed by kafka. Key: ${:?}", tx_id);
+                })
+                .await;
             }
-        })
+        }
+    })
 }
