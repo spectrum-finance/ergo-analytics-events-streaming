@@ -7,9 +7,9 @@ rust-version = "1.67.1"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-spectrum-offchain = { git = "https://github.com/spectrum-finance/spectrum-offchain-ergo", rev = "8dfe190973abb5d36b009befb53d0dca2900ec3e" }
-ergo-chain-sync = { git = "https://github.com/spectrum-finance/spectrum-offchain-ergo", rev = "8dfe190973abb5d36b009befb53d0dca2900ec3e" }
-ergo-mempool-sync = { git = "https://github.com/spectrum-finance/spectrum-offchain-ergo", rev = "8dfe190973abb5d36b009befb53d0dca2900ec3e" }
+spectrum-offchain = { git = "https://github.com/spectrum-finance/spectrum-offchain-ergo", rev = "601ed95e619709ef8a5256e8d28bd5c40b2f9c6c" }
+ergo-chain-sync = { git = "https://github.com/spectrum-finance/spectrum-offchain-ergo", rev = "601ed95e619709ef8a5256e8d28bd5c40b2f9c6c" }
+ergo-mempool-sync = { git = "https://github.com/spectrum-finance/spectrum-offchain-ergo", rev = "601ed95e619709ef8a5256e8d28bd5c40b2f9c6c" }
 kafka = "0.9"
 async-trait = "0.1.58"
 base64 = "0.21.0"
