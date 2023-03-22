@@ -8,7 +8,7 @@ use ergo_chain_sync::client::node::ErgoNodeHttpClient;
 use ergo_chain_sync::client::types::Url;
 use ergo_chain_sync::rocksdb::RocksConfig;
 use ergo_chain_sync::{chain_sync_stream, ChainSync, ChainSyncNonInit};
-use ergo_mempool_sync::{mempool_sync_stream_combined, MempoolSync, MempoolSyncConf};
+use ergo_mempool_sync::{mempool_sync_stream, MempoolSyncConf};
 use futures::Stream;
 use isahc::{prelude::*, HttpClient};
 use serde::Deserialize;
@@ -24,7 +24,6 @@ use spectrum_offchain::event_sink::types::{EventHandler, NoopDefaultHandler};
 
 use crate::event_source::{block_event_source, mempool_event_source, tx_event_source};
 use crate::models::tx_event::TxEvent;
-use ergo_mempool_sync::client::node::ErgoMempoolHttpClient;
 use futures::stream::select_all;
 use spectrum_offchain::event_sink::process_events;
 
@@ -59,13 +58,6 @@ async fn main() {
         Some(&SIGNAL_TIP_REACHED),
     )
     .await;
-    let client_mempool = HttpClient::builder()
-        .timeout(std::time::Duration::from_secs(
-            config.http_client_timeout_duration_secs as u64,
-        ))
-        .build()
-        .unwrap();
-    let node_mempool = ErgoMempoolHttpClient::new(client_mempool, config.node_addr.clone());
     let cache_mempool = ChainCacheRocksDB::new(RocksConfig {
         db_path: config.mempool_cache_db_path.into(),
     });
@@ -88,20 +80,17 @@ async fn main() {
 
     let mempool_chain_sync = ChainSyncNonInit::new(&node, cache_mempool);
 
-    let mempool_sync = MempoolSync::init(
+    let mempool_sync = mempool_sync_stream(
         MempoolSyncConf {
-            sync_interval: config.mempool_sync_interval,
+            sync_interval: Duration::from_secs(config.mempool_sync_interval),
         },
-        &node_mempool,
         mempool_chain_sync,
+        &node,
     )
     .await;
 
-    let mempool_source = mempool_event_source(
-        mempool_sync_stream_combined(mempool_sync),
-        producer3,
-        config.mempool_topic.to_string(),
-    );
+    let mempool_source =
+        mempool_event_source(mempool_sync, producer3, config.mempool_topic.to_string());
     let event_source = tx_event_source(block_event_source(
         chain_sync_stream(chain_sync),
         producer1,
