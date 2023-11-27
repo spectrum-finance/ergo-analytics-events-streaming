@@ -57,16 +57,11 @@ async fn main() {
         cache,
         Some(&SIGNAL_TIP_REACHED),
     )
-    .await;
+        .await;
     let cache_mempool = ChainCacheRocksDB::new(RocksConfig {
         db_path: config.mempool_cache_db_path.into(),
     });
 
-    let producer1 = Producer::from_hosts(vec![config.kafka_address.to_owned()])
-        .with_ack_timeout(Duration::from_secs(1))
-        .with_required_acks(RequiredAcks::One)
-        .create()
-        .unwrap();
     let producer2 = Producer::from_hosts(vec![config.kafka_address.to_owned()])
         .with_ack_timeout(Duration::from_secs(1))
         .with_required_acks(RequiredAcks::One)
@@ -87,14 +82,12 @@ async fn main() {
         mempool_chain_sync,
         &node,
     )
-    .await;
+        .await;
 
     let mempool_source =
         mempool_event_source(mempool_sync, producer3, config.mempool_topic.to_string());
     let event_source = tx_event_source(block_event_source(
-        chain_sync_stream(chain_sync),
-        producer1,
-        config.blocks_topic.to_string(),
+        chain_sync_stream(chain_sync)
     ));
     let handler = ProxyEvents::new(
         Arc::new(std::sync::Mutex::new(producer2)),
@@ -121,7 +114,6 @@ struct AppConfig<'a> {
     chain_cache_db_path: &'a str,
     mempool_cache_db_path: &'a str,
     kafka_address: &'a str,
-    blocks_topic: &'a str,
     tx_topic: &'a str,
     mempool_topic: &'a str,
     mempool_sync_interval: u64,
@@ -140,6 +132,6 @@ struct AppArgs {
     log4rs_path: Option<String>,
 }
 
-pub fn boxed<'a, T>(s: impl Stream<Item = T> + 'a) -> Pin<Box<dyn Stream<Item = T> + 'a>> {
+pub fn boxed<'a, T>(s: impl Stream<Item=T> + 'a) -> Pin<Box<dyn Stream<Item=T> + 'a>> {
     Box::pin(s)
 }
