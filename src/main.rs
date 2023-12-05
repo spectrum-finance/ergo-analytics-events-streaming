@@ -14,8 +14,8 @@ use isahc::{prelude::*, HttpClient};
 use serde::Deserialize;
 use std::pin::Pin;
 use std::sync::{Arc, Once};
+use std::str::FromStr;
 use std::time::Duration;
-
 use futures::StreamExt;
 use kafka::producer::{Producer, RequiredAcks};
 
@@ -30,6 +30,7 @@ use spectrum_offchain::event_sink::process_events;
 #[tokio::main]
 async fn main() {
     let args = AppArgs::parse();
+    println!("args {:?}", args.node_addr);
     let raw_config =
         std::fs::read_to_string(args.config_yaml_path).expect("Cannot load configuration file");
     let config: AppConfig = serde_yaml::from_str(&raw_config).expect("Invalid configuration file");
@@ -40,13 +41,16 @@ async fn main() {
         log4rs::init_file(config.log4rs_yaml_path, Default::default()).unwrap();
     }
     let client = HttpClient::builder()
-        .timeout(std::time::Duration::from_secs(
+        .timeout(Duration::from_secs(
             config.http_client_timeout_duration_secs as u64,
         ))
         .build()
         .unwrap();
 
-    let node = ErgoNodeHttpClient::new(client, config.node_addr.clone());
+
+    let node_addr = Url::from_str(args.node_addr.clone().as_str()).unwrap();
+
+    let node = ErgoNodeHttpClient::new(client, node_addr);
     let cache = ChainCacheRocksDB::new(RocksConfig {
         db_path: config.chain_cache_db_path.into(),
     });
@@ -57,16 +61,11 @@ async fn main() {
         cache,
         Some(&SIGNAL_TIP_REACHED),
     )
-    .await;
+        .await;
     let cache_mempool = ChainCacheRocksDB::new(RocksConfig {
         db_path: config.mempool_cache_db_path.into(),
     });
 
-    let producer1 = Producer::from_hosts(vec![config.kafka_address.to_owned()])
-        .with_ack_timeout(Duration::from_secs(1))
-        .with_required_acks(RequiredAcks::One)
-        .create()
-        .unwrap();
     let producer2 = Producer::from_hosts(vec![config.kafka_address.to_owned()])
         .with_ack_timeout(Duration::from_secs(1))
         .with_required_acks(RequiredAcks::One)
@@ -82,19 +81,17 @@ async fn main() {
 
     let mempool_sync = mempool_sync_stream(
         MempoolSyncConf {
-            sync_interval: Duration::from_secs(config.mempool_sync_interval),
+            sync_interval: Duration::from_millis(config.mempool_sync_interval),
         },
         mempool_chain_sync,
         &node,
     )
-    .await;
+        .await;
 
     let mempool_source =
         mempool_event_source(mempool_sync, producer3, config.mempool_topic.to_string());
     let event_source = tx_event_source(block_event_source(
-        chain_sync_stream(chain_sync),
-        producer1,
-        config.blocks_topic.to_string(),
+        chain_sync_stream(chain_sync)
     ));
     let handler = ProxyEvents::new(
         Arc::new(std::sync::Mutex::new(producer2)),
@@ -114,14 +111,12 @@ async fn main() {
 
 #[derive(Deserialize)]
 struct AppConfig<'a> {
-    node_addr: Url,
     http_client_timeout_duration_secs: u32,
     chain_sync_starting_height: u32,
     log4rs_yaml_path: &'a str,
     chain_cache_db_path: &'a str,
     mempool_cache_db_path: &'a str,
     kafka_address: &'a str,
-    blocks_topic: &'a str,
     tx_topic: &'a str,
     mempool_topic: &'a str,
     mempool_sync_interval: u64,
@@ -138,8 +133,10 @@ struct AppArgs {
     /// Optional path to the log4rs YAML configuration file. NOTE: overrides path specified in config YAML file.
     #[arg(long, short)]
     log4rs_path: Option<String>,
+    #[arg(long, short)]
+    node_addr: String,
 }
 
-pub fn boxed<'a, T>(s: impl Stream<Item = T> + 'a) -> Pin<Box<dyn Stream<Item = T> + 'a>> {
+pub fn boxed<'a, T>(s: impl Stream<Item=T> + 'a) -> Pin<Box<dyn Stream<Item=T> + 'a>> {
     Box::pin(s)
 }

@@ -15,43 +15,17 @@ use crate::models::tx_event::TxEvent;
 use async_std::task::spawn_blocking;
 
 pub fn block_event_source<S>(
-    upstream: S,
-    producer: Producer,
-    topic: String,
-) -> impl Stream<Item = ChainUpgrade>
-where
-    S: Stream<Item = ChainUpgrade>,
+    upstream: S
+) -> impl Stream<Item=ChainUpgrade>
+    where
+        S: Stream<Item=ChainUpgrade>,
 {
-    let topic = Arc::new(tokio::sync::Mutex::new(topic));
-    let producer = Arc::new(std::sync::Mutex::new(producer));
-    upstream.then(move |ev| {
-        let topic = topic.clone();
-        let producer = producer.clone();
-        let ev_clone = ev.clone();
-        async move {
-            let block_event = BlockEvent::from(ev_clone);
-            let block_id: String = match block_event.clone() {
-                BlockEvent::BlockApply { id, .. } | BlockEvent::BlockUnapply { id, .. } => id,
-            };
-            let value = serde_json::to_string(&block_event).unwrap();
-            let topic = topic.clone().lock().await.clone();
-            spawn_blocking(move || {
-                let rec: &Record<String, String> =
-                    &Record::from_key_value(topic.as_str(), block_id.clone(), value.clone());
-                info!("Block value is: ${:?}", value.clone());
-                info!("Got new block. Key: ${:?}", block_id);
-                producer.lock().unwrap().send(rec).unwrap();
-                info!("New block processed by kafka. Key: ${:?}", block_id);
-            })
-            .await;
-            ev
-        }
-    })
+    upstream
 }
 
-pub fn tx_event_source<S>(upstream: S) -> impl Stream<Item = TxEvent>
-where
-    S: Stream<Item = ChainUpgrade>,
+pub fn tx_event_source<S>(upstream: S) -> impl Stream<Item=TxEvent>
+    where
+        S: Stream<Item=ChainUpgrade>,
 {
     upstream.flat_map(|u| stream::iter(process_upgrade(u)))
 }
@@ -81,9 +55,9 @@ pub fn mempool_event_source<S>(
     upstream: S,
     producer: Producer,
     topic: String,
-) -> impl Stream<Item = ()>
-where
-    S: Stream<Item = MempoolUpdate>,
+) -> impl Stream<Item=()>
+    where
+        S: Stream<Item=MempoolUpdate>,
 {
     let topic = Arc::new(tokio::sync::Mutex::new(topic));
     let producer = Arc::new(std::sync::Mutex::new(producer));
@@ -108,7 +82,7 @@ where
                     producer.lock().unwrap().send(rec).unwrap();
                     info!("New mempool event processed by kafka. Key: ${:?}", tx_id);
                 })
-                .await;
+                    .await;
             }
         }
     })
